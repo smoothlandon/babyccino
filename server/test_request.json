@@ -1,0 +1,38 @@
+{
+  "conversation_id": null,
+  "requirements": {
+    "name": "is_prime",
+    "purpose": "Check if a number is prime",
+    "parameters": [
+      {
+        "name": "n",
+        "type": "int",
+        "description": "The number to check for primality"
+      }
+    ],
+    "return_type": "bool",
+    "edge_cases": [
+      "n < 2 returns False",
+      "n = 2 returns True",
+      "Handle negative numbers by returning False"
+    ],
+    "examples": [
+      {
+        "input": "2",
+        "output": "True"
+      },
+      {
+        "input": "4",
+        "output": "False"
+      },
+      {
+        "input": "17",
+        "output": "True"
+      },
+      {
+        "input": "1",
+        "output": "False"
+      }
+    ]
+  }
+}
