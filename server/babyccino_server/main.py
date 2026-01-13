@@ -74,21 +74,21 @@ app.add_middleware(
 )
 
 
-# Dependency override for LLM client injection
-async def get_llm_client():
+# Dependency for LLM client injection
+async def get_llm_client_dependency():
     """Provide LLM client instance to endpoints."""
     if llm_client is None:
         raise RuntimeError("LLM client not initialized")
     return llm_client
 
 
-# Override dependency in route modules
-health.get_llm_client = get_llm_client
-generate.get_llm_client = get_llm_client
-
 # Include routers
 app.include_router(health.router, tags=["health"])
 app.include_router(generate.router, tags=["generation"])
+
+# Override dependencies using FastAPI's dependency_overrides
+app.dependency_overrides[health.get_llm_client] = get_llm_client_dependency
+app.dependency_overrides[generate.get_llm_client] = get_llm_client_dependency
 
 
 @app.get("/")

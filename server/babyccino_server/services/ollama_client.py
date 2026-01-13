@@ -78,8 +78,28 @@ class OllamaClient(LLMClient):
         """
         try:
             # List available models to verify connection
-            models = await self.client.list()
-            model_names = [m["name"] for m in models.get("models", [])]
+            response = await self.client.list()
+
+            # Extract model names - handle different response structures
+            models_list = response.get("models", [])
+            model_names = []
+
+            for model in models_list:
+                # The Ollama client returns Model objects with a 'model' attribute
+                if hasattr(model, 'model'):
+                    # It's a Model object with attributes
+                    model_names.append(model.model)
+                elif isinstance(model, dict):
+                    # Fallback: dict with 'name' or 'model' key
+                    name = model.get("name") or model.get("model")
+                    if name:
+                        model_names.append(name)
+                else:
+                    # Last resort: convert to string
+                    model_names.append(str(model))
+
+            logger.info(f"Available models: {model_names}")
+            logger.info(f"Looking for model: {self.model}")
 
             is_available = self.model in model_names
 
