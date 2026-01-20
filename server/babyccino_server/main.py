@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import generate, health
+from .api import generate, health, flowchart
 from .config import settings
 from .services.ollama_client import OllamaClient
 
@@ -85,10 +85,12 @@ async def get_llm_client_dependency():
 # Include routers
 app.include_router(health.router, tags=["health"])
 app.include_router(generate.router, tags=["generation"])
+app.include_router(flowchart.router, tags=["flowchart"])
 
 # Override dependencies using FastAPI's dependency_overrides
 app.dependency_overrides[health.get_llm_client] = get_llm_client_dependency
 app.dependency_overrides[generate.get_llm_client] = get_llm_client_dependency
+app.dependency_overrides[flowchart.get_llm_client] = get_llm_client_dependency
 
 
 @app.get("/")

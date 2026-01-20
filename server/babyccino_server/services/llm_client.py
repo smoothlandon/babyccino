@@ -48,3 +48,12 @@ class LLMClient(ABC):
             Model name/identifier
         """
         pass
+
+
+# Dependency injection stub - will be overridden in main.py
+async def get_llm_client() -> LLMClient:
+    """Dependency injection for LLM client.
+
+    This is overridden in main.py with the actual implementation.
+    """
+    raise NotImplementedError("LLM client dependency not configured")
