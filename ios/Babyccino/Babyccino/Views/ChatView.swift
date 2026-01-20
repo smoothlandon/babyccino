@@ -15,14 +15,29 @@ class ChatViewModel: ObservableObject {
     @Published var isGenerating = false
 
     let serverClient: ServerClient
+    let llmService: LLMService
+    private var conversationHistory: [ChatMessage] = []
 
-    init(serverClient: ServerClient) {
+    init(serverClient: ServerClient, llmService: LLMService? = nil) {
         self.serverClient = serverClient
+        self.llmService = llmService ?? LLMServiceFactory.createLLMService()
+
+        // Add system prompt to conversation
+        conversationHistory.append(.system("""
+        You are Babyccino ☕️, a helpful assistant that helps developers design Python functions.
+
+        Your role:
+        1. Ask clarifying questions about the function requirements
+        2. Discuss parameters, return types, and edge cases
+        3. Once you have enough information, let the user know they can generate code
+
+        Be conversational and helpful!
+        """))
 
         // Add welcome message
         messages.append(Message(
             type: .assistant,
-            content: "Hi! I'm Babyccino ☕️\n\nFor this demo, describe the function you want and I'll send it to the server for code generation.\n\nExample: \"I need a function that checks if a string is a palindrome, ignoring case and spaces\""
+            content: "Hi! I'm Babyccino ☕️\n\nDescribe a function you'd like to build, and I'll help you design it!\n\nExample: \"I need a function that checks if a number is prime\""
         ))
     }
 
@@ -32,49 +47,37 @@ class ChatViewModel: ObservableObject {
         let userMessage = currentInput
         currentInput = ""
 
-        // Add user message
+        // Add user message to UI and conversation history
         messages.append(Message(type: .user, content: userMessage))
+        conversationHistory.append(.user(userMessage))
 
-        // For MVP: Parse the user's message into requirements
-        // In Phase 3B, this will be handled by local LLM
         Task {
-            await generateCodeFromMessage(userMessage)
+            // Check if user explicitly wants to generate code (only "generate code" phrase)
+            let lowercased = userMessage.lowercased()
+            if lowercased.contains("generate code") || lowercased == "generate" {
+                await generateCode()
+            } else {
+                await getAssistantResponse()
+            }
         }
     }
 
-    private func generateCodeFromMessage(_ userMessage: String) async {
+    private func getAssistantResponse() async {
         isGenerating = true
 
-        // Add "thinking" message
-        let thinkingMessage = Message(type: .assistant, content: "Generating code...")
-        messages.append(thinkingMessage)
-
         do {
-            // For demo: create simple requirements from user message
-            // In reality, this would come from conversation with local LLM
-            let requirements = createDemoRequirements(from: userMessage)
+            let response = try await llmService.generateResponse(messages: conversationHistory)
 
-            let response = try await serverClient.generateCode(requirements: requirements)
-
-            // Remove thinking message
-            if let index = messages.firstIndex(where: { $0.id == thinkingMessage.id }) {
-                messages.remove(at: index)
+            // Check if response is a special command to show flowchart
+            if response == "show_flowchart" {
+                await showFlowchart()
+            } else {
+                // Add assistant response to UI and conversation history
+                conversationHistory.append(.assistant(response))
+                messages.append(Message(type: .assistant, content: response))
             }
-
-            // Add code result message
-            messages.append(Message(
-                type: .code,
-                content: "Code generated successfully!",
-                codeResult: response.code
-            ))
 
         } catch {
-            // Remove thinking message
-            if let index = messages.firstIndex(where: { $0.id == thinkingMessage.id }) {
-                messages.remove(at: index)
-            }
-
-            // Show error
             messages.append(Message(
                 type: .error,
                 content: "Error: \(error.localizedDescription)"
@@ -84,11 +87,80 @@ class ChatViewModel: ObservableObject {
         isGenerating = false
     }
 
-    // MARK: - Demo Helper (Remove in Phase 3B)
+    private func showFlowchart() async {
+        // Generate flowchart from mock LLM
+        if let mockLLM = llmService as? MockLLMService {
+            let flowchart = mockLLM.generateFlowchart()
 
-    private func createDemoRequirements(from message: String) -> FunctionRequirements {
+            // Add flowchart message
+            messages.append(Message(
+                type: .flowchart,
+                content: "Here's the logic flow for your prime checker:",
+                flowchart: flowchart
+            ))
+
+            // Add follow-up message
+            conversationHistory.append(.assistant("I've created a flowchart showing the logic. Does this look correct?"))
+            messages.append(Message(
+                type: .assistant,
+                content: "Does this flowchart capture the logic correctly?\n\nSay \"generate code\" when you're ready to generate the actual code!"
+            ))
+        }
+    }
+
+    private func generateCode() async {
+        isGenerating = true
+
+        // Add thinking message
+        let thinkingMessage = Message(type: .assistant, content: "Sending requirements to server...")
+        messages.append(thinkingMessage)
+
+        do {
+            // Extract requirements from conversation (returns array for multi-function support)
+            let requirements: [FunctionRequirements]
+            if let mockLLM = llmService as? MockLLMService {
+                requirements = [mockLLM.extractRequirements()]  // Single function for now
+            } else {
+                // For real LLM, would parse conversation here
+                requirements = [createDemoRequirements()]
+            }
+
+            let response = try await serverClient.generateCode(requirements: requirements)
+
+            // Remove thinking message
+            if let index = messages.firstIndex(where: { $0.id == thinkingMessage.id }) {
+                messages.remove(at: index)
+            }
+
+            // Add code result for each generated function
+            for codeResult in response.results {
+                messages.append(Message(
+                    type: .code,
+                    content: "Generated function: \(codeResult.functionName)",
+                    codeResult: codeResult
+                ))
+            }
+
+        } catch {
+            // Remove thinking message
+            if let index = messages.firstIndex(where: { $0.id == thinkingMessage.id }) {
+                messages.remove(at: index)
+            }
+
+            messages.append(Message(
+                type: .error,
+                content: "Error: \(error.localizedDescription)"
+            ))
+        }
+
+        isGenerating = false
+    }
+
+    // MARK: - Demo Helper (Remove in Phase 3C when real LLM extracts requirements)
+
+    private func createDemoRequirements() -> FunctionRequirements {
         // This is a simplified demo - just creates a prime checker
-        // In Phase 3B, the local LLM will generate proper requirements
+        // In Phase 3C, the real LLM will parse conversation and extract requirements
         return FunctionRequirements(
             name: "is_prime",
             purpose: "Check if a number is prime",

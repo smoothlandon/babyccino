@@ -30,12 +30,15 @@ async def generate_code(
 ):
     """Generate Python function code with tests and complexity analysis.
 
+    Supports both single and multi-function generation.
+    Request contains a list of function requirements.
+
     Args:
-        request: Code generation request with structured requirements
+        request: Code generation request with structured requirements (list)
         llm_client: Injected LLM client
 
     Returns:
-        Generated code, tests, and complexity analysis
+        Generated code, tests, and complexity analysis for each function
 
     Raises:
         HTTPException: If code generation fails
@@ -43,18 +46,21 @@ async def generate_code(
     # Generate or use existing conversation ID
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
-    logger.info(f"Generating code for conversation {conversation_id}")
+    num_functions = len(request.requirements)
+    logger.info(
+        f"Generating {num_functions} function(s) for conversation {conversation_id}"
+    )
 
     try:
         # Create code generator
         generator = CodeGenerator(llm_client)
 
-        # Generate function with tests and analysis
-        code_result = await generator.generate_function(request.requirements)
+        # Generate all functions with tests and analysis
+        results = await generator.generate_functions(request.requirements)
 
         return GenerateCodeResponse(
             conversation_id=conversation_id,
-            code=code_result,
+            results=results,
         )
 
     except Exception as e:

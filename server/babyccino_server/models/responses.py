@@ -38,15 +38,30 @@ class ComplexityResult(BaseModel):
 
 
 class CodeResult(BaseModel):
-    """Generated code with tests and analysis."""
+    """Generated code with tests and analysis for a single function."""
 
+    function_name: str = Field(..., description="Name of the generated function")
     function: str = Field(..., description="Generated Python function code")
     tests: TestResult = Field(..., description="Test results")
     complexity: ComplexityResult = Field(..., description="Complexity analysis")
 
 
 class GenerateCodeResponse(BaseModel):
-    """Response from code generation endpoint."""
+    """Response from code generation endpoint.
+
+    Supports both single and multi-function generation.
+    Results list will have one item for single function, multiple for batch.
+    """
 
     conversation_id: str = Field(..., description="Conversation UUID")
-    code: CodeResult = Field(..., description="Generated code, tests, and analysis")
+    results: list[CodeResult] = Field(
+        ...,
+        description="Generated code results (one per function)",
+        min_length=1
+    )
+
+    # Legacy compatibility: expose first result as 'code' for single-function calls
+    @property
+    def code(self) -> CodeResult:
+        """Legacy accessor for single function generation."""
+        return self.results[0]

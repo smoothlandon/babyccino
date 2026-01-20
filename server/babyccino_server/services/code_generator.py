@@ -25,6 +25,26 @@ class CodeGenerator:
         self.test_runner = TestRunner()
         self.complexity_analyzer = ComplexityAnalyzer(llm_client)
 
+    async def generate_functions(
+        self, requirements_list: list[FunctionRequirements]
+    ) -> list[CodeResult]:
+        """Generate multiple functions with tests and analysis.
+
+        Args:
+            requirements_list: List of function requirements
+
+        Returns:
+            List of code results, one per function
+        """
+        logger.info(f"Generating {len(requirements_list)} function(s)")
+
+        results = []
+        for requirements in requirements_list:
+            result = await self.generate_function(requirements)
+            results.append(result)
+
+        return results
+
     async def generate_function(self, requirements: FunctionRequirements) -> CodeResult:
         """Generate complete function with tests and analysis.
 
@@ -49,6 +69,7 @@ class CodeGenerator:
         complexity = await self.complexity_analyzer.analyze(function_code)
 
         return CodeResult(
+            function_name=requirements.name,
             function=function_code,
             tests=TestResult(
                 code=test_code,

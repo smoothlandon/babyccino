@@ -36,9 +36,17 @@ class FunctionRequirements(BaseModel):
 
 
 class GenerateCodeRequest(BaseModel):
-    """Request to generate code from structured requirements."""
+    """Request to generate code from structured requirements.
+
+    Supports both single function and multi-function generation.
+    For single function, provide a single-item list.
+    """
 
     conversation_id: str | None = Field(
         None, description="UUID for tracking conversation (null for new)"
     )
-    requirements: FunctionRequirements = Field(..., description="Structured function requirements")
+    requirements: list[FunctionRequirements] = Field(
+        ...,
+        description="List of function requirements (single or multiple functions)",
+        min_length=1
+    )

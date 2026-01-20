@@ -30,18 +30,30 @@ struct ComplexityResult: Codable {
     let explanation: String
 }
 
-struct CodeResult: Codable {
+struct CodeResult: Codable, Identifiable {
+    let id = UUID()
+    let functionName: String
     let function: String
     let tests: TestResult
     let complexity: ComplexityResult
+
+    enum CodingKeys: String, CodingKey {
+        case functionName = "function_name"
+        case function, tests, complexity
+    }
 }
 
 struct GenerateCodeResponse: Codable {
     let conversationId: String
-    let code: CodeResult
+    let results: [CodeResult]
 
     enum CodingKeys: String, CodingKey {
         case conversationId = "conversation_id"
-        case code
+        case results
+    }
+
+    // Legacy compatibility: expose first result as 'code' for single-function calls
+    var code: CodeResult {
+        results[0]
     }
 }

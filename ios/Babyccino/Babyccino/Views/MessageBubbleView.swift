@@ -19,6 +19,8 @@ struct MessageBubbleView: View {
             VStack(alignment: message.type == .user ? .trailing : .leading, spacing: 4) {
                 if let codeResult = message.codeResult {
                     CodeResultView(codeResult: codeResult)
+                } else if let flowchart = message.flowchart {
+                    FlowchartMessageView(flowchart: flowchart, description: message.content)
                 } else {
                     Text(message.content)
                         .padding(12)
@@ -46,6 +48,8 @@ struct MessageBubbleView: View {
             return .blue
         case .assistant:
             return Color(.systemGray5)
+        case .flowchart:
+            return Color(.systemGray6)
         case .code:
             return Color(.systemGray6)
         case .error:
@@ -55,6 +59,60 @@ struct MessageBubbleView: View {
 
     private var textColor: Color {
         message.type == .user ? .white : .primary
+    }
+}
+
+struct FlowchartMessageView: View {
+    let flowchart: Flowchart
+    let description: String
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let title = flowchart.title {
+                Text(title)
+                    .font(.headline)
+            }
+
+            if !description.isEmpty {
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            // Flowchart preview
+            FlowchartView(flowchart: flowchart)
+                .frame(height: 300)
+                .background(Color.white)
+                .cornerRadius(12)
+
+            // Expand button
+            Button(action: { isExpanded = true }) {
+                HStack {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    Text("View Full Screen")
+                        .font(.caption)
+                }
+                .foregroundColor(.blue)
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(16)
+        .sheet(isPresented: $isExpanded) {
+            NavigationView {
+                FlowchartView(flowchart: flowchart)
+                    .navigationTitle(flowchart.title ?? "Flowchart")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                isExpanded = false
+                            }
+                        }
+                    }
+            }
+        }
     }
 }
 

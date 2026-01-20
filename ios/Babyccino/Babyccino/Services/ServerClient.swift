@@ -74,7 +74,7 @@ class ServerClient: ObservableObject {
     // MARK: - Generate Code
 
     @MainActor
-    func generateCode(requirements: FunctionRequirements) async throws -> GenerateCodeResponse {
+    func generateCode(requirements: [FunctionRequirements]) async throws -> GenerateCodeResponse {
         guard let url = URL(string: "\(serverURL)/generate-code") else {
             throw ServerError.invalidURL
         }
@@ -83,10 +83,10 @@ class ServerClient: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Create request body
+        // Create request body - requirements is now an array
         let requestBody: [String: Any] = [
             "conversation_id": NSNull(),
-            "requirements": try encodeFunctionRequirements(requirements)
+            "requirements": requirements.map { try! encodeFunctionRequirements($0) }
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
