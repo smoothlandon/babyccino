@@ -36,5 +36,24 @@ class MLXLLMService: LLMService {
             userInfo: [NSLocalizedDescriptionKey: "MLX service not yet implemented"]
         )
     }
+
+    func classifyFlowchartComplexity(requirements: FunctionRequirements) async throws -> FlowchartComplexity {
+        // TODO: Phase 3C - Implement MLX-based classification
+        // For now, use simple heuristics as fallback
+        if requirements.edgeCases.count > 3 {
+            return .complex
+        }
+
+        let purposeLower = requirements.purpose.lowercased()
+        let complexKeywords = ["loop", "iterate", "recursion", "recursive", "multiple", "nested"]
+
+        for keyword in complexKeywords {
+            if purposeLower.contains(keyword) {
+                return .complex
+            }
+        }
+
+        return .simple
+    }
 }
 #endif

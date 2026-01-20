@@ -159,4 +159,27 @@ class MockLLMService: LLMService {
     func resetConversation() {
         conversationState = .initial
     }
+
+    /// Classify flowchart complexity (mock implementation uses simple heuristics)
+    func classifyFlowchartComplexity(requirements: FunctionRequirements) async throws -> FlowchartComplexity {
+        // Simple heuristics for mock classification:
+        // - More than 3 edge cases → complex
+        // - Purpose mentions "loop", "iterate", "recursion" → complex
+        // - Otherwise → simple
+
+        if requirements.edgeCases.count > 3 {
+            return .complex
+        }
+
+        let purposeLower = requirements.purpose.lowercased()
+        let complexKeywords = ["loop", "iterate", "recursion", "recursive", "multiple", "nested"]
+
+        for keyword in complexKeywords {
+            if purposeLower.contains(keyword) {
+                return .complex
+            }
+        }
+
+        return .simple
+    }
 }

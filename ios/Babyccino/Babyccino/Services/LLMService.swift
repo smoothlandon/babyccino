@@ -7,10 +7,19 @@
 
 import Foundation
 
+/// Flowchart complexity classification
+enum FlowchartComplexity {
+    case simple    // Linear logic, max 2 decisions
+    case complex   // Loops, multiple branches, recursion
+}
+
 /// Protocol for LLM inference
 protocol LLMService {
     /// Generate a response to a user message
     func generateResponse(messages: [ChatMessage]) async throws -> String
+
+    /// Classify flowchart complexity for routing decision
+    func classifyFlowchartComplexity(requirements: FunctionRequirements) async throws -> FlowchartComplexity
 
     /// Check if the service is ready
     var isReady: Bool { get }

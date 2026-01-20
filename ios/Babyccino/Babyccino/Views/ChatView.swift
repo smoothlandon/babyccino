@@ -16,11 +16,16 @@ class ChatViewModel: ObservableObject {
 
     let serverClient: ServerClient
     let llmService: LLMService
+    private let flowchartRouter: FlowchartRouter
     private var conversationHistory: [ChatMessage] = []
 
     init(serverClient: ServerClient, llmService: LLMService? = nil) {
         self.serverClient = serverClient
         self.llmService = llmService ?? LLMServiceFactory.createLLMService()
+        self.flowchartRouter = FlowchartRouter(
+            llmService: self.llmService,
+            serverURL: serverClient.serverURL
+        )
 
         // Add system prompt to conversation
         conversationHistory.append(.system("""
@@ -88,14 +93,23 @@ class ChatViewModel: ObservableObject {
     }
 
     private func showFlowchart() async {
-        // Generate flowchart from mock LLM
-        if let mockLLM = llmService as? MockLLMService {
-            let flowchart = mockLLM.generateFlowchart()
+        do {
+            // Extract requirements from conversation
+            let requirements: FunctionRequirements
+            if let mockLLM = llmService as? MockLLMService {
+                requirements = mockLLM.extractRequirements()
+            } else {
+                // For real LLM, would parse conversation here
+                requirements = createDemoRequirements()
+            }
+
+            // Use flowchart router to generate (routes to local or server based on complexity)
+            let flowchart = try await flowchartRouter.generateFlowchart(requirements: requirements)
 
             // Add flowchart message
             messages.append(Message(
                 type: .flowchart,
-                content: "Here's the logic flow for your prime checker:",
+                content: "Here's the logic flow for \(requirements.name):",
                 flowchart: flowchart
             ))
 
@@ -104,6 +118,12 @@ class ChatViewModel: ObservableObject {
             messages.append(Message(
                 type: .assistant,
                 content: "Does this flowchart capture the logic correctly?\n\nSay \"generate code\" when you're ready to generate the actual code!"
+            ))
+
+        } catch {
+            messages.append(Message(
+                type: .error,
+                content: "Error generating flowchart: \(error.localizedDescription)"
             ))
         }
     }
