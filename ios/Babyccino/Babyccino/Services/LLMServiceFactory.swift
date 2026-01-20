@@ -15,10 +15,7 @@ class LLMServiceFactory {
         #else
         // Use real MLX LLM on physical device or Mac (Designed for iPad)
         // Both have Metal support
-        // TODO: Implement MLXLLMService in Phase 3C
-        // For now, fall back to mock until we create the real service
-        return MockLLMService()
-        // return MLXLLMService()
+        return MLXLLMService(config: .qwen05b)
         #endif
     }
 }
