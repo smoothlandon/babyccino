@@ -73,9 +73,11 @@ class ChatViewModel: ObservableObject {
         do {
             let response = try await llmService.generateResponse(messages: conversationHistory)
 
-            // Check if response is a special command to show flowchart
+            // Check if response is a special command
             if response == "show_flowchart" {
                 await showFlowchart()
+            } else if response == "generate_code" {
+                await generateCode()
             } else {
                 // Add assistant response to UI and conversation history
                 conversationHistory.append(.assistant(response))
@@ -98,8 +100,10 @@ class ChatViewModel: ObservableObject {
             let requirements: FunctionRequirements
             if let mockLLM = llmService as? MockLLMService {
                 requirements = mockLLM.extractRequirements()
+            } else if let mlxLLM = llmService as? MLXLLMService {
+                requirements = mlxLLM.extractRequirements()
             } else {
-                // For real LLM, would parse conversation here
+                // Fallback to demo requirements
                 requirements = createDemoRequirements()
             }
 
@@ -140,8 +144,10 @@ class ChatViewModel: ObservableObject {
             let requirements: [FunctionRequirements]
             if let mockLLM = llmService as? MockLLMService {
                 requirements = [mockLLM.extractRequirements()]  // Single function for now
+            } else if let mlxLLM = llmService as? MLXLLMService {
+                requirements = [mlxLLM.extractRequirements()]
             } else {
-                // For real LLM, would parse conversation here
+                // Fallback to demo requirements
                 requirements = [createDemoRequirements()]
             }
 

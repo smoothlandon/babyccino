@@ -112,11 +112,7 @@ Be concise, friendly, and helpful. Keep responses under 100 words.
         }
 
         if userMessageLower.contains("generate") && userMessageLower.contains("code") {
-            return """
-Perfect! I'll send your requirements to the server for code generation.
-
-The server will create a Python function based on our conversation.
-"""
+            return "generate_code"  // Special signal to trigger code generation
         }
 
         // First message - introduce and ask what they want
@@ -211,6 +207,104 @@ You can:
 
 How would you like to proceed?
 """
+    }
+
+    /// Extract requirements from conversation history
+    func extractRequirements() -> FunctionRequirements {
+        // Parse conversation to extract requirements
+        // For now, use simple pattern matching on the conversation history
+
+        var functionName = "my_function"
+        var purpose = "Perform a task"
+        var parameters: [FunctionParameter] = []
+        var edgeCases: [String] = []
+
+        // Look through conversation for clues
+        for message in conversationHistory where message.role == "user" {
+            let content = message.content.lowercased()
+
+            // Detect function type from first message
+            if content.contains("prime") {
+                functionName = "is_prime"
+                purpose = "Check if a number is prime"
+                parameters = [
+                    FunctionParameter(name: "n", type: "int", description: "The number to check for primality")
+                ]
+                edgeCases = [
+                    "n < 2 returns False",
+                    "n = 2 returns True",
+                    "Handle negative numbers by returning False"
+                ]
+            } else if content.contains("fibonacci") || content.contains("fib") {
+                functionName = "fibonacci"
+                purpose = "Calculate the nth Fibonacci number"
+                parameters = [
+                    FunctionParameter(name: "n", type: "int", description: "The position in Fibonacci sequence")
+                ]
+                edgeCases = [
+                    "n < 0 raises ValueError",
+                    "n = 0 returns 0",
+                    "n = 1 returns 1"
+                ]
+            } else if content.contains("sort") {
+                functionName = "sort_list"
+                purpose = "Sort a list of numbers"
+                parameters = [
+                    FunctionParameter(name: "arr", type: "list[int]", description: "The list to sort")
+                ]
+                edgeCases = [
+                    "Empty list returns empty list",
+                    "Single element list returns itself",
+                    "Handle duplicate values"
+                ]
+            }
+
+            // Extract edge cases from user messages
+            if content.contains("negative") && !edgeCases.contains(where: { $0.contains("negative") }) {
+                edgeCases.append("Handle negative numbers")
+            }
+            if content.contains("zero") || content.contains("0") {
+                if !edgeCases.contains(where: { $0.contains("zero") || $0.contains("0") }) {
+                    edgeCases.append("Handle zero input")
+                }
+            }
+        }
+
+        return FunctionRequirements(
+            name: functionName,
+            purpose: purpose,
+            parameters: parameters,
+            returnType: functionName.contains("prime") ? "bool" : "int",
+            edgeCases: edgeCases,
+            examples: generateExamples(for: functionName)
+        )
+    }
+
+    /// Generate examples based on function type
+    private func generateExamples(for functionName: String) -> [FunctionExample] {
+        if functionName.contains("prime") {
+            return [
+                FunctionExample(input: "2", output: "True"),
+                FunctionExample(input: "4", output: "False"),
+                FunctionExample(input: "17", output: "True"),
+                FunctionExample(input: "1", output: "False")
+            ]
+        } else if functionName.contains("fibonacci") {
+            return [
+                FunctionExample(input: "0", output: "0"),
+                FunctionExample(input: "1", output: "1"),
+                FunctionExample(input: "5", output: "5"),
+                FunctionExample(input: "10", output: "55")
+            ]
+        } else if functionName.contains("sort") {
+            return [
+                FunctionExample(input: "[3, 1, 4, 1, 5]", output: "[1, 1, 3, 4, 5]"),
+                FunctionExample(input: "[]", output: "[]"),
+                FunctionExample(input: "[1]", output: "[1]")
+            ]
+        } else {
+            return []
+        }
     }
 
     func classifyFlowchartComplexity(requirements: FunctionRequirements) async throws -> FlowchartComplexity {
