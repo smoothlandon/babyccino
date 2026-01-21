@@ -30,15 +30,10 @@ struct MLXModelConfig {
     )
 }
 
-/// Simple transformer-based LLM service using MLX
+/// Simple LLM service using MLX framework and rule-based responses
 class MLXLLMService: LLMService {
     private var modelReady = false
     private let config: MLXModelConfig
-
-    // Model components (simplified for demonstration)
-    private var vocabulary: [String] = []
-    private var tokenToId: [String: Int] = [:]
-    private var idToToken: [Int: String] = [:]
 
     var isReady: Bool {
         return modelReady
@@ -53,15 +48,11 @@ class MLXLLMService: LLMService {
         }
     }
 
-    /// Initialize the model (simplified version)
+    /// Initialize the model
     private func initializeModel() async {
         do {
-            // For this implementation, we'll use a simple vocabulary
-            // In production, this would load from a tokenizer file
+            // Simulate model initialization
             try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
-
-            // Initialize basic vocabulary (in production, load from file)
-            initializeVocabulary()
 
             modelReady = true
             print("✅ MLX model initialized: \(config.name)")
@@ -72,115 +63,85 @@ class MLXLLMService: LLMService {
         }
     }
 
-    /// Initialize a basic vocabulary
-    private func initializeVocabulary() {
-        // Simple word-level tokenization for demonstration
-        // In production, use SentencePiece or BPE tokenizer
-        let commonWords = [
-            "<|im_start|>", "<|im_end|>", "system", "user", "assistant",
-            "I", "am", "a", "helpful", "Python", "function", "design",
-            "need", "to", "create", "check", "number", "prime", "for",
-            "can", "help", "you", "with", "that", "Let's", "clarify",
-            "requirements", "What", "should", "return", "if", "invalid",
-            "input", "How", "handle", "negative", "numbers", "edge", "cases",
-            "ready", "generate", "code", "yes", "no", "show", "flow",
-            "flowchart", "visualization", "fibonacci", "recursion",
-            ".", "?", "!", ",", ":", ";", "(", ")", "\n", " "
-        ]
-
-        vocabulary = commonWords
-        for (index, word) in commonWords.enumerated() {
-            tokenToId[word] = index
-            idToToken[index] = word
-        }
-    }
-
     func generateResponse(messages: [ChatMessage]) async throws -> String {
         guard isReady else {
             throw MLXError.modelNotReady
         }
 
-        // Format the conversation
-        let prompt = formatChatPrompt(messages: messages)
+        // Extract the last user message for context
+        guard let lastUserMessage = messages.last(where: { $0.role == "user" }) else {
+            return "I didn't receive a message. Could you try again?"
+        }
 
-        // Tokenize (simple word-level for demo)
-        let tokens = tokenize(prompt)
-
-        // Generate response using MLX-based sampling
-        let generatedTokens = try await generateTokens(from: tokens, maxTokens: config.maxTokens)
-
-        // Detokenize
-        let response = detokenize(generatedTokens)
+        // Generate response based on context
+        let response = try await generateContextualResponse(userMessage: lastUserMessage.content)
 
         return response
     }
 
-    /// Generate tokens using MLX-based inference (simplified)
-    private func generateTokens(from inputTokens: [Int], maxTokens: Int) async throws -> [Int] {
-        var generatedTokens: [Int] = []
+    /// Generate response based on user message context
+    private func generateContextualResponse(userMessage: String) async throws -> String {
+        // Simulate MLX inference delay
+        try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
 
-        // Simulate MLX inference with realistic behavior
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5s base delay
+        let lowercased = userMessage.lowercased()
 
-        // Generate response based on conversation context
-        // This is a rule-based system for demonstration
-        // In production, this would be actual transformer inference
-        let contextWords = inputTokens.compactMap { idToToken[$0] }
+        // Check for specific intents
+        if lowercased.contains("prime") || (lowercased.contains("check") && lowercased.contains("number")) {
+            return """
+Great! I'd love to help you create a function to check if a number is prime.
 
-        if contextWords.contains("prime") || contextWords.contains("number") {
-            // Asking about prime numbers
-            let response = """
-            Great! I'd love to help you create a function to check if a number is prime.
+Before we proceed, let me ask a few clarifying questions:
 
-            Before we proceed, let me ask a few clarifying questions:
+1. What should the function return for invalid input (e.g., negative numbers)?
+2. Should it handle the edge case of 0 and 1?
+3. Do you want it optimized for large numbers?
 
-            1. What should the function return for invalid input (e.g., negative numbers)?
-            2. Should it handle the edge case of 0 and 1?
-            3. Do you want it optimized for large numbers?
+Please share your requirements!
+"""
+        } else if lowercased.contains("fibonacci") || lowercased.contains("fib") {
+            return """
+I can help you design a Fibonacci function!
 
-            Please share your requirements!
-            """
-            return tokenize(response)
+A few questions:
+1. Should it use recursion or iteration?
+2. How should it handle negative input?
+3. Do you need memoization for performance?
 
-        } else if contextWords.contains("fibonacci") || contextWords.contains("recursion") {
-            let response = """
-            I can help you design a Fibonacci function!
+Let me know your preferences!
+"""
+        } else if lowercased.contains("generate code") || lowercased == "generate" {
+            return """
+Perfect! I have your requirements.
 
-            A few questions:
-            1. Should it use recursion or iteration?
-            2. How should it handle negative input?
-            3. Do you need memoization for performance?
+Say "generate code" and I'll send the requirements to the server for implementation!
 
-            Let me know your preferences!
-            """
-            return tokenize(response)
+You can also say "show me the flow" to visualize the logic first.
+"""
+        } else if lowercased.contains("show") && (lowercased.contains("flow") || lowercased.contains("visualize")) {
+            return "show_flowchart" // Special signal for ChatView
+        } else if lowercased.contains("ready") || lowercased.contains("yes") || lowercased.contains("sure") {
+            return """
+Great! I've noted your requirements.
 
-        } else if contextWords.contains("ready") || contextWords.contains("generate") {
-            let response = """
-            Perfect! I have your requirements.
+When you're ready:
+• Say "generate code" to create the function
+• Say "show me the flow" to see a flowchart first
 
-            When you're ready, just say "generate code" and I'll send the requirements to the server for implementation!
-
-            You can also say "show me the flow" to visualize the logic first.
-            """
-            return tokenize(response)
-
-        } else if contextWords.contains("flow") || contextWords.contains("visualize") {
-            return tokenize("show_flowchart") // Special signal
-
+What would you like to do?
+"""
         } else {
             // Default friendly response
-            let response = """
-            I'm here to help you design Python functions!
+            return """
+I'm here to help you design Python functions!
 
-            Tell me about the function you'd like to create. For example:
-            • "I need a function to check if a number is prime"
-            • "Help me create a fibonacci calculator"
-            • "I want to sort a list of numbers"
+Tell me about the function you'd like to create. For example:
+• "I need a function to check if a number is prime"
+• "Help me create a fibonacci calculator"
+• "I want to sort a list of numbers"
 
-            What would you like to build?
-            """
-            return tokenize(response)
+What would you like to build?
+"""
         }
     }
 
@@ -214,54 +175,6 @@ class MLXLLMService: LLMService {
         return .simple
     }
 
-    // MARK: - Tokenization
-
-    /// Simple word-level tokenization
-    private func tokenize(_ text: String) -> [Int] {
-        var tokens: [Int] = []
-
-        // Split by spaces and punctuation
-        let words = text.components(separatedBy: .whitespaces)
-
-        for word in words {
-            if let id = tokenToId[word] {
-                tokens.append(id)
-            } else {
-                // Unknown word - use a simple hashing approach
-                // In production, use subword tokenization
-                let hash = abs(word.hashValue) % vocabulary.count
-                tokens.append(hash)
-            }
-        }
-
-        return tokens
-    }
-
-    /// Convert tokens back to text
-    private func detokenize(_ tokens: [Int]) -> String {
-        return tokens.compactMap { idToToken[$0] }.joined(separator: " ")
-    }
-
-    /// Format messages into prompt
-    private func formatChatPrompt(messages: [ChatMessage]) -> String {
-        var prompt = ""
-
-        for message in messages {
-            switch message.role {
-            case "system":
-                prompt += "<|im_start|>system\n\(message.content)<|im_end|>\n"
-            case "user":
-                prompt += "<|im_start|>user\n\(message.content)<|im_end|>\n"
-            case "assistant":
-                prompt += "<|im_start|>assistant\n\(message.content)<|im_end|>\n"
-            default:
-                break
-            }
-        }
-
-        prompt += "<|im_start|>assistant\n"
-        return prompt
-    }
 }
 
 /// MLX-specific errors

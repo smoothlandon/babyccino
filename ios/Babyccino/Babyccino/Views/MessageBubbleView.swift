@@ -23,6 +23,7 @@ struct MessageBubbleView: View {
                     FlowchartMessageView(flowchart: flowchart, description: message.content)
                 } else {
                     Text(message.content)
+                        .textSelection(.enabled)
                         .padding(12)
                         .background(bubbleColor)
                         .foregroundColor(textColor)
