@@ -36,7 +36,7 @@ class ModelManager: ObservableObject {
     }
 
     /// Get the directory for a specific model
-    private func modelDirectory(for modelId: String) -> URL {
+    func modelDirectory(for modelId: String) -> URL {
         return modelsDirectory.appendingPathComponent(modelId, isDirectory: true)
     }
 
@@ -87,17 +87,28 @@ class ModelManager: ObservableObject {
         downloadStates[modelInfo.id] = .downloading(progress: 0.0)
 
         do {
-            // Download model files from HuggingFace
-            // For now, simulate download with delay
-            // TODO: Replace with actual HuggingFace API download
-            for i in 1...10 {
-                try await Task.sleep(nanoseconds: 500_000_000) // 0.5s per chunk
-                let progress = Double(i) / 10.0
-                downloadStates[modelInfo.id] = .downloading(progress: progress)
-            }
-
             // Create model directory
             try fileManager.createDirectory(at: modelDir, withIntermediateDirectories: true)
+
+            // Download required files from HuggingFace
+            let filesToDownload = [
+                "config.json",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "model.safetensors"  // Or weights.00.safetensors for split models
+            ]
+
+            let baseURL = "https://huggingface.co/\(modelInfo.huggingFaceRepo)/resolve/main"
+
+            for (index, filename) in filesToDownload.enumerated() {
+                let fileURL = URL(string: "\(baseURL)/\(filename)")!
+                let destinationURL = modelDir.appendingPathComponent(filename)
+
+                print("📥 Downloading \(filename)...")
+
+                // Download file with progress tracking
+                try await downloadFile(from: fileURL, to: destinationURL, modelId: modelInfo.id, fileIndex: index, totalFiles: filesToDownload.count)
+            }
 
             // Mark as downloaded
             downloadStates[modelInfo.id] = .downloaded
@@ -105,9 +116,30 @@ class ModelManager: ObservableObject {
             print("✅ Model downloaded: \(modelInfo.displayName)")
 
         } catch {
+            // Clean up partial download
+            try? fileManager.removeItem(at: modelDir)
             downloadStates[modelInfo.id] = .failed(error: error.localizedDescription)
             throw error
         }
+    }
+
+    /// Download a single file with progress tracking
+    private func downloadFile(from url: URL, to destination: URL, modelId: String, fileIndex: Int, totalFiles: Int) async throws {
+        let (tempURL, response) = try await URLSession.shared.download(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw ModelDownloadError.downloadFailed("HTTP error for \(url.lastPathComponent)")
+        }
+
+        // Move downloaded file to destination
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: tempURL, to: destination)
+
+        // Update progress (each file contributes equally)
+        let progress = Double(fileIndex + 1) / Double(totalFiles)
+        downloadStates[modelId] = .downloading(progress: progress)
     }
 
     /// Delete a downloaded model to free space
@@ -160,5 +192,23 @@ class ModelManager: ObservableObject {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+}
+
+/// Errors that can occur during model download
+enum ModelDownloadError: LocalizedError {
+    case downloadFailed(String)
+    case invalidModel
+    case insufficientSpace
+
+    var errorDescription: String? {
+        switch self {
+        case .downloadFailed(let reason):
+            return "Download failed: \(reason)"
+        case .invalidModel:
+            return "Invalid model format"
+        case .insufficientSpace:
+            return "Insufficient storage space"
+        }
     }
 }
