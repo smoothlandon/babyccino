@@ -34,6 +34,14 @@ struct MLXModelConfig {
 class MLXLLMService: LLMService {
     private var modelReady = false
     private let config: MLXModelConfig
+    private var conversationState: ConversationState = .initial
+    private var currentTopic: String?
+
+    enum ConversationState {
+        case initial
+        case askedForDetails
+        case hasRequirements
+    }
 
     var isReady: Bool {
         return modelReady
@@ -79,16 +87,21 @@ class MLXLLMService: LLMService {
         return response
     }
 
-    /// Generate response based on user message context
+    /// Generate response based on user message context and conversation state
     private func generateContextualResponse(userMessage: String) async throws -> String {
         // Simulate MLX inference delay
         try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
 
         let lowercased = userMessage.lowercased()
 
-        // Check for specific intents
-        if lowercased.contains("prime") || (lowercased.contains("check") && lowercased.contains("number")) {
-            return """
+        // State machine for conversation flow
+        switch conversationState {
+        case .initial:
+            // First message - identify topic
+            if lowercased.contains("prime") || (lowercased.contains("check") && lowercased.contains("number")) {
+                currentTopic = "prime"
+                conversationState = .askedForDetails
+                return """
 Great! I'd love to help you create a function to check if a number is prime.
 
 Before we proceed, let me ask a few clarifying questions:
@@ -99,8 +112,10 @@ Before we proceed, let me ask a few clarifying questions:
 
 Please share your requirements!
 """
-        } else if lowercased.contains("fibonacci") || lowercased.contains("fib") {
-            return """
+            } else if lowercased.contains("fibonacci") || lowercased.contains("fib") {
+                currentTopic = "fibonacci"
+                conversationState = .askedForDetails
+                return """
 I can help you design a Fibonacci function!
 
 A few questions:
@@ -110,29 +125,8 @@ A few questions:
 
 Let me know your preferences!
 """
-        } else if lowercased.contains("generate code") || lowercased == "generate" {
-            return """
-Perfect! I have your requirements.
-
-Say "generate code" and I'll send the requirements to the server for implementation!
-
-You can also say "show me the flow" to visualize the logic first.
-"""
-        } else if lowercased.contains("show") && (lowercased.contains("flow") || lowercased.contains("visualize")) {
-            return "show_flowchart" // Special signal for ChatView
-        } else if lowercased.contains("ready") || lowercased.contains("yes") || lowercased.contains("sure") {
-            return """
-Great! I've noted your requirements.
-
-When you're ready:
-• Say "generate code" to create the function
-• Say "show me the flow" to see a flowchart first
-
-What would you like to do?
-"""
-        } else {
-            // Default friendly response
-            return """
+            } else {
+                return """
 I'm here to help you design Python functions!
 
 Tell me about the function you'd like to create. For example:
@@ -142,6 +136,51 @@ Tell me about the function you'd like to create. For example:
 
 What would you like to build?
 """
+            }
+
+        case .askedForDetails:
+            // User is providing details
+            if lowercased.contains("generate code") || lowercased == "generate" {
+                conversationState = .hasRequirements
+                return """
+Perfect! I have your requirements.
+
+Say "generate code" and I'll send them to the server for implementation!
+
+You can also say "show me the flow" to visualize the logic first.
+"""
+            } else {
+                // User provided some details, acknowledge and move forward
+                conversationState = .hasRequirements
+                return """
+Thanks for those details! I've noted your requirements for the \(currentTopic ?? "function").
+
+When you're ready:
+• Say "generate code" to create the function
+• Say "show me the flow" to see a flowchart first
+
+What would you like to do?
+"""
+            }
+
+        case .hasRequirements:
+            // User has given requirements
+            if lowercased.contains("show") && (lowercased.contains("flow") || lowercased.contains("visualize")) {
+                return "show_flowchart" // Special signal
+            } else if lowercased.contains("generate") {
+                return """
+Perfect! I'll extract the requirements and send them to the server.
+
+Just say "generate code" to proceed!
+"""
+            } else {
+                // Remind them what they can do
+                return """
+I have your requirements ready!
+
+Say "show me the flow" to visualize the logic, or "generate code" to proceed directly to code generation.
+"""
+            }
         }
     }
 
