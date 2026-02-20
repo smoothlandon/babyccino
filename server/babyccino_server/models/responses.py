@@ -46,6 +46,25 @@ class CodeResult(BaseModel):
     complexity: ComplexityResult = Field(..., description="Complexity analysis")
 
 
+class ProposedTestCase(BaseModel):
+    """A single proposed test case for user approval."""
+
+    id: str = Field(..., description="Unique identifier for this test case")
+    description: str = Field(..., description="Human-readable description of what this tests")
+    input: str = Field(..., description="Input value(s) as a string representation")
+    expected_output: str = Field(..., description="Expected return value as a string")
+    is_edge_case: bool = Field(default=False, description="Whether this is an edge/boundary case")
+
+
+class GenerateTestsResponse(BaseModel):
+    """Response from test generation endpoint — proposed test cases for user approval."""
+
+    function_name: str = Field(..., description="Name of the function being tested")
+    proposed_tests: list[ProposedTestCase] = Field(
+        ..., description="Proposed test cases for user to review and approve"
+    )
+
+
 class GenerateCodeResponse(BaseModel):
     """Response from code generation endpoint.
 

@@ -35,11 +35,14 @@ struct FunctionRequirements: Codable {
     let returnType: String
     let edgeCases: [String]
     let examples: [FunctionExample]
+    /// Full conversation transcript so the server has complete context for custom logic
+    let conversationTranscript: String?
 
     enum CodingKeys: String, CodingKey {
         case name, purpose, parameters
         case returnType = "return_type"
         case edgeCases = "edge_cases"
         case examples
+        case conversationTranscript = "conversation_transcript"
     }
 }

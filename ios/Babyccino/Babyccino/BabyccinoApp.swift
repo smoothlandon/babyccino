@@ -10,14 +10,23 @@ import SwiftUI
 @main
 struct BabyccinoApp: App {
     @StateObject private var serverClient = ServerClient()
+    @State private var showOnboarding = !hasCompletedOnboarding()
 
     var body: some Scene {
         WindowGroup {
-            ChatView(serverClient: serverClient)
-                .task {
-                    // Check server health on launch
-                    _ = try? await serverClient.checkHealth()
-                }
+            if showOnboarding {
+                OnboardingView(isComplete: $showOnboarding)
+            } else {
+                ChatView(serverClient: serverClient)
+                    .task {
+                        // Check server health on launch
+                        _ = try? await serverClient.checkHealth()
+                    }
+            }
         }
+    }
+
+    private static func hasCompletedOnboarding() -> Bool {
+        return UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }
 }

@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from ..models.requests import FunctionRequirements
+from ..models.requests import ApprovedTestCase, FunctionRequirements
 from ..models.responses import CodeResult, TestResult
 from .complexity_analyzer import ComplexityAnalyzer
 from .llm_client import LLMClient
@@ -26,12 +26,15 @@ class CodeGenerator:
         self.complexity_analyzer = ComplexityAnalyzer(llm_client)
 
     async def generate_functions(
-        self, requirements_list: list[FunctionRequirements]
+        self,
+        requirements_list: list[FunctionRequirements],
+        approved_tests: list[ApprovedTestCase] | None = None,
     ) -> list[CodeResult]:
         """Generate multiple functions with tests and analysis.
 
         Args:
             requirements_list: List of function requirements
+            approved_tests: Optional user-approved test cases to target
 
         Returns:
             List of code results, one per function
@@ -40,12 +43,18 @@ class CodeGenerator:
 
         results = []
         for requirements in requirements_list:
-            result = await self.generate_function(requirements)
+            # For multi-function requests, approved tests apply to the first function
+            tests_for_this = approved_tests if requirements == requirements_list[0] else None
+            result = await self.generate_function(requirements, approved_tests=tests_for_this)
             results.append(result)
 
         return results
 
-    async def generate_function(self, requirements: FunctionRequirements) -> CodeResult:
+    async def generate_function(
+        self,
+        requirements: FunctionRequirements,
+        approved_tests: list[ApprovedTestCase] | None = None,
+    ) -> CodeResult:
         """Generate complete function with tests and analysis.
 
         Args:
@@ -55,12 +64,17 @@ class CodeGenerator:
             Complete code result with function, tests, and complexity
         """
         logger.info(f"Generating function: {requirements.name}")
+        if approved_tests:
+            logger.info(f"Using {len(approved_tests)} user-approved test cases")
 
-        # Generate function code
-        function_code = await self._generate_function_code(requirements)
+        # Generate function code — pass approved tests so it can target them
+        function_code = await self._generate_function_code(requirements, approved_tests)
 
-        # Generate tests
-        test_code = await self._generate_tests(requirements, function_code)
+        # Build test code from approved tests if provided, otherwise generate fresh
+        if approved_tests:
+            test_code = self._build_test_code_from_approved(requirements, approved_tests)
+        else:
+            test_code = await self._generate_tests(requirements, function_code)
 
         # Run tests
         test_results, test_summary = await self.test_runner.run_tests(function_code, test_code)
@@ -79,11 +93,53 @@ class CodeGenerator:
             complexity=complexity,
         )
 
-    async def _generate_function_code(self, requirements: FunctionRequirements) -> str:
+    def _build_test_code_from_approved(
+        self,
+        requirements: FunctionRequirements,
+        approved_tests: list[ApprovedTestCase],
+    ) -> str:
+        """Convert user-approved test cases into runnable pytest code.
+
+        Args:
+            requirements: Function requirements (for function name)
+            approved_tests: User-approved test cases
+
+        Returns:
+            Pytest test code as a string
+        """
+        fn = requirements.name
+        lines = [f"from function import {fn}", ""]
+
+        for test in approved_tests:
+            # Sanitize description into a valid Python identifier
+            safe_desc = (
+                test.description.lower()
+                .replace(" ", "_")
+                .replace("'", "")
+                .replace('"', "")
+                .replace("-", "_")
+                .replace("/", "_")
+            )
+            safe_desc = "".join(c for c in safe_desc if c.isalnum() or c == "_")
+            safe_desc = safe_desc[:60]  # Keep it reasonable length
+
+            lines.append(f"def test_{safe_desc}():")
+            lines.append(f'    """{ test.description }"""')
+            lines.append(f"    assert {fn}({test.input}) == {test.expected_output}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    async def _generate_function_code(
+        self,
+        requirements: FunctionRequirements,
+        approved_tests: list[ApprovedTestCase] | None = None,
+    ) -> str:
         """Generate the function code from requirements.
 
         Args:
             requirements: Function requirements
+            approved_tests: Optional user-approved test cases to target
 
         Returns:
             Generated Python function code
@@ -104,6 +160,27 @@ Follow PEP 8 style guidelines and use type hints appropriately."""
             [f"  - Input: {ex.input} → Output: {ex.output}" for ex in requirements.examples]
         )
 
+        # Include conversation transcript if available - it contains user-defined rules
+        # that must be implemented exactly as specified
+        transcript_section = ""
+        if requirements.conversation_transcript:
+            transcript_section = f"""
+
+Conversation Transcript (contains the exact rules and criteria defined by the user - implement these precisely):
+{requirements.conversation_transcript}"""
+
+        # Build approved test cases section — highest priority signal for implementation
+        approved_tests_section = ""
+        if approved_tests:
+            test_lines = "\n".join(
+                [f"  - {t.description}: {requirements.name}({t.input}) == {t.expected_output}"
+                 for t in approved_tests]
+            )
+            approved_tests_section = f"""
+
+User-Approved Test Cases (your implementation MUST pass ALL of these exactly):
+{test_lines}"""
+
         prompt = f"""Generate a Python function with these requirements:
 
 Function Name: {requirements.name}
@@ -117,9 +194,11 @@ Edge Cases to Handle:
 {edge_cases_desc if edge_cases_desc else "  - None specified"}
 
 Examples:
-{examples_desc if examples_desc else "  - None provided"}
+{examples_desc if examples_desc else "  - None provided"}{approved_tests_section}{transcript_section}
 
 Requirements:
+- If user-approved test cases are provided above, your implementation MUST pass ALL of them — they define the exact expected behaviour
+- If a conversation transcript is provided, implement the EXACT rules the user described - do not invent your own logic
 - Include a comprehensive docstring with Args and Returns sections
 - Use type hints for parameters and return type
 - Handle all specified edge cases

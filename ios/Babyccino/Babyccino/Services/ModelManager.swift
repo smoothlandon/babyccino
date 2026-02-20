@@ -8,6 +8,11 @@
 import Foundation
 import Combine
 
+#if !targetEnvironment(simulator)
+import MLXLLM
+import MLXLMCommon
+#endif
+
 @MainActor
 class ModelManager: ObservableObject {
     static let shared = ModelManager()
@@ -29,128 +34,114 @@ class ModelManager: ObservableObject {
         }
     }
 
-    /// Get the models directory in the app's cache
-    private var modelsDirectory: URL {
-        let cacheDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return cacheDir.appendingPathComponent("models", isDirectory: true)
-    }
-
-    /// Get the directory for a specific model
+    /// Get the directory for a specific model (used by MLXLLMService)
     func modelDirectory(for modelId: String) -> URL {
-        return modelsDirectory.appendingPathComponent(modelId, isDirectory: true)
+        // MLX models are stored in Hub cache, not our custom directory
+        // The LLMModelFactory handles the actual location
+        // This is just for backwards compatibility
+        let cacheDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        return cacheDir.appendingPathComponent("models", isDirectory: true).appendingPathComponent(modelId, isDirectory: true)
     }
 
     /// Check if a model is downloaded
+    /// For now, we track this via download state rather than filesystem checks
+    /// since LLMModelFactory manages its own Hub cache
     func isModelDownloaded(_ modelId: String) -> Bool {
-        let modelDir = modelDirectory(for: modelId)
-        var isDirectory: ObjCBool = false
-        return fileManager.fileExists(atPath: modelDir.path, isDirectory: &isDirectory) && isDirectory.boolValue
+        if case .downloaded = downloadStates[modelId] {
+            return true
+        }
+        return false
     }
 
     /// Get the size of a downloaded model in bytes
+    /// Note: Size estimation since models are in Hub cache
     func modelSize(for modelId: String) -> Int64? {
         guard isModelDownloaded(modelId) else { return nil }
-
-        let modelDir = modelDirectory(for: modelId)
-        var totalSize: Int64 = 0
-
-        if let enumerator = fileManager.enumerator(at: modelDir, includingPropertiesForKeys: [.fileSizeKey]) {
-            for case let fileURL as URL in enumerator {
-                if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                    totalSize += Int64(fileSize)
-                }
-            }
+        // Return the model's declared size from ModelInfo
+        if let modelInfo = ModelInfo.model(withId: modelId) {
+            return Int64(modelInfo.sizeInMB) * 1024 * 1024
         }
-
-        return totalSize
+        return nil
     }
 
     /// Update download states for all models
     func updateDownloadStates() async {
+        // Check if we have a selected model - if so, mark it as downloaded
+        if let selectedId = selectedModelId {
+            downloadStates[selectedId] = .downloaded
+            print("✓ Restored downloaded model: \(selectedId)")
+        }
+
+        // Initialize states for other models
         for model in ModelInfo.availableModels {
-            if isModelDownloaded(model.id) {
-                downloadStates[model.id] = .downloaded
-            } else if downloadStates[model.id] == nil {
+            if downloadStates[model.id] == nil {
                 downloadStates[model.id] = .notDownloaded
             }
         }
     }
 
-    /// Download a model from HuggingFace
+    /// Download a model from HuggingFace using MLX's built-in Hub API
     func downloadModel(_ modelInfo: ModelInfo) async throws {
-        // Create models directory if needed
-        try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+        #if targetEnvironment(simulator)
+        // Simulator doesn't support MLX
+        throw ModelDownloadError.downloadFailed("Models can only be downloaded on physical devices")
+        #else
 
-        let modelDir = modelDirectory(for: modelInfo.id)
+        print("🚀 Starting download for: \(modelInfo.displayName)")
+        print("   Repo: \(modelInfo.huggingFaceRepo)")
+        print("   Size: \(modelInfo.sizeInMB) MB")
 
         // Set downloading state
         downloadStates[modelInfo.id] = .downloading(progress: 0.0)
 
         do {
-            // Create model directory
-            try fileManager.createDirectory(at: modelDir, withIntermediateDirectories: true)
+            // Create model configuration
+            let modelConfiguration = ModelConfiguration(
+                id: modelInfo.huggingFaceRepo,
+                defaultPrompt: "You are a helpful assistant"
+            )
 
-            // Download required files from HuggingFace
-            let filesToDownload = [
-                "config.json",
-                "tokenizer.json",
-                "tokenizer_config.json",
-                "model.safetensors"  // Or weights.00.safetensors for split models
-            ]
+            // Use LLMModelFactory to download the model
+            // This handles all HuggingFace complexity (auth, redirects, caching, etc.)
+            print("📥 Loading model via Hub API (this will download if needed)...")
 
-            let baseURL = "https://huggingface.co/\(modelInfo.huggingFaceRepo)/resolve/main"
+            let factory = LLMModelFactory.shared
+            let startTime = Date()
 
-            for (index, filename) in filesToDownload.enumerated() {
-                let fileURL = URL(string: "\(baseURL)/\(filename)")!
-                let destinationURL = modelDir.appendingPathComponent(filename)
+            _ = try await factory.loadContainer(configuration: modelConfiguration) { [weak self] progress in
+                Task { @MainActor in
+                    let percent = Int(progress.fractionCompleted * 100)
+                    self?.downloadStates[modelInfo.id] = .downloading(progress: progress.fractionCompleted)
 
-                print("📥 Downloading \(filename)...")
-
-                // Download file with progress tracking
-                try await downloadFile(from: fileURL, to: destinationURL, modelId: modelInfo.id, fileIndex: index, totalFiles: filesToDownload.count)
+                    // Log progress every 10%
+                    if percent % 10 == 0 {
+                        print("📊 Progress: \(percent)% - \(progress.localizedDescription ?? "")")
+                    }
+                }
             }
+
+            let elapsed = Date().timeIntervalSince(startTime)
+            print("✅ Model downloaded in \(String(format: "%.1f", elapsed))s")
 
             // Mark as downloaded
             downloadStates[modelInfo.id] = .downloaded
 
-            print("✅ Model downloaded: \(modelInfo.displayName)")
+            print("✅ Model ready: \(modelInfo.displayName)")
 
         } catch {
-            // Clean up partial download
-            try? fileManager.removeItem(at: modelDir)
+            print("❌ Download failed: \(error)")
+            print("   Error type: \(type(of: error))")
+            print("   Description: \(error.localizedDescription)")
             downloadStates[modelInfo.id] = .failed(error: error.localizedDescription)
             throw error
         }
+        #endif
     }
 
-    /// Download a single file with progress tracking
-    private func downloadFile(from url: URL, to destination: URL, modelId: String, fileIndex: Int, totalFiles: Int) async throws {
-        let (tempURL, response) = try await URLSession.shared.download(from: url)
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw ModelDownloadError.downloadFailed("HTTP error for \(url.lastPathComponent)")
-        }
-
-        // Move downloaded file to destination
-        if fileManager.fileExists(atPath: destination.path) {
-            try fileManager.removeItem(at: destination)
-        }
-        try fileManager.moveItem(at: tempURL, to: destination)
-
-        // Update progress (each file contributes equally)
-        let progress = Double(fileIndex + 1) / Double(totalFiles)
-        downloadStates[modelId] = .downloading(progress: progress)
-    }
 
     /// Delete a downloaded model to free space
+    /// Note: Models are managed by Hub cache, so we just update state
     func deleteModel(_ modelId: String) throws {
-        let modelDir = modelDirectory(for: modelId)
-
-        guard fileManager.fileExists(atPath: modelDir.path) else {
-            return
-        }
-
-        try fileManager.removeItem(at: modelDir)
         downloadStates[modelId] = .notDownloaded
 
         // If this was the selected model, clear selection
@@ -159,7 +150,8 @@ class ModelManager: ObservableObject {
             userDefaults.removeObject(forKey: selectedModelKey)
         }
 
-        print("🗑️ Model deleted: \(modelId)")
+        print("🗑️ Model marked as deleted: \(modelId)")
+        print("⚠️ Note: To fully remove, clear Hub cache via system settings")
     }
 
     /// Select a model for use

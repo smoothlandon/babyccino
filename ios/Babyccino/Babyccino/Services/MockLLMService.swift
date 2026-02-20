@@ -120,7 +120,8 @@ class MockLLMService: LLMService {
                 FunctionExample(input: "4", output: "False"),
                 FunctionExample(input: "17", output: "True"),
                 FunctionExample(input: "1", output: "False")
-            ]
+            ],
+            conversationTranscript: nil
         )
     }
 

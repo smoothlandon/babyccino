@@ -56,7 +56,11 @@ async def generate_code(
         generator = CodeGenerator(llm_client)
 
         # Generate all functions with tests and analysis
-        results = await generator.generate_functions(request.requirements)
+        # Pass approved_tests so code generation targets the user-approved contract
+        results = await generator.generate_functions(
+            request.requirements,
+            approved_tests=request.approved_tests,
+        )
 
         return GenerateCodeResponse(
             conversation_id=conversation_id,

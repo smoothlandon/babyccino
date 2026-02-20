@@ -71,11 +71,11 @@ class ServerClient: ObservableObject {
         }
     }
 
-    // MARK: - Generate Code
+    // MARK: - Generate Tests (propose for user approval)
 
     @MainActor
-    func generateCode(requirements: [FunctionRequirements]) async throws -> GenerateCodeResponse {
-        guard let url = URL(string: "\(serverURL)/generate-code") else {
+    func generateTests(requirements: FunctionRequirements) async throws -> GenerateTestsResponse {
+        guard let url = URL(string: "\(serverURL)/generate-tests") else {
             throw ServerError.invalidURL
         }
 
@@ -83,18 +83,17 @@ class ServerClient: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Create request body - requirements is now an array
-        let requestBody: [String: Any] = [
-            "conversation_id": NSNull(),
-            "requirements": requirements.map { try! encodeFunctionRequirements($0) }
-        ]
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let reqJson = try encoder.encode(requirements)
+        let reqObj = try JSONSerialization.jsonObject(with: reqJson) as! [String: Any]
 
+        let requestBody: [String: Any] = ["requirements": reqObj]
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
 
-            // Check HTTP status code
             if let httpResponse = response as? HTTPURLResponse {
                 guard (200...299).contains(httpResponse.statusCode) else {
                     if let errorMessage = String(data: data, encoding: .utf8) {
@@ -104,8 +103,9 @@ class ServerClient: ObservableObject {
                 }
             }
 
-            let result = try JSONDecoder().decode(GenerateCodeResponse.self, from: data)
-            return result
+            // GenerateTestsResponse uses explicit CodingKeys with snake_case strings —
+            // do NOT use convertFromSnakeCase as it would double-convert the key names
+            return try JSONDecoder().decode(GenerateTestsResponse.self, from: data)
 
         } catch let error as ServerError {
             throw error
@@ -116,13 +116,61 @@ class ServerClient: ObservableObject {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Generate Code
 
-    private func encodeFunctionRequirements(_ requirements: FunctionRequirements) throws -> [String: Any] {
+    @MainActor
+    func generateCode(
+        requirements: [FunctionRequirements],
+        approvedTests: [ApprovedTestCase]? = nil
+    ) async throws -> GenerateCodeResponse {
+        guard let url = URL(string: "\(serverURL)/generate-code") else {
+            throw ServerError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
-        let data = try encoder.encode(requirements)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        return json
+
+        var requestBody: [String: Any] = [
+            "conversation_id": NSNull(),
+            "requirements": try requirements.map { req -> [String: Any] in
+                let data = try encoder.encode(req)
+                return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            }
+        ]
+
+        if let approvedTests = approvedTests {
+            requestBody["approved_tests"] = try approvedTests.map { test -> [String: Any] in
+                let data = try encoder.encode(test)
+                return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+            }
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            if let httpResponse = response as? HTTPURLResponse {
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    if let errorMessage = String(data: data, encoding: .utf8) {
+                        throw ServerError.serverError(errorMessage)
+                    }
+                    throw ServerError.serverError("HTTP \(httpResponse.statusCode)")
+                }
+            }
+
+            return try JSONDecoder().decode(GenerateCodeResponse.self, from: data)
+
+        } catch let error as ServerError {
+            throw error
+        } catch let error as DecodingError {
+            throw ServerError.decodingError(error)
+        } catch {
+            throw ServerError.networkError(error)
+        }
     }
 }

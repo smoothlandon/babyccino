@@ -25,26 +25,17 @@ struct ModelInfo: Identifiable, Codable {
     }
 
     /// Available models for download
+    /// Only models that support structured JSON output reliably
     static let availableModels: [ModelInfo] = [
-        ModelInfo(
-            id: "qwen-0.5b",
-            name: "Qwen2.5-0.5B-Instruct-4bit",
-            displayName: "Qwen 0.5B (Recommended)",
-            huggingFaceRepo: "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
-            sizeInMB: 300,
-            quality: 3,
-            speed: .fast,
-            description: "Fastest model. Good for basic conversations and quick responses. ~50 tokens/sec on iPad M3."
-        ),
         ModelInfo(
             id: "qwen-1.5b",
             name: "Qwen2.5-1.5B-Instruct-4bit",
-            displayName: "Qwen 1.5B",
+            displayName: "Qwen 1.5B (Recommended)",
             huggingFaceRepo: "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
             sizeInMB: 900,
             quality: 4,
             speed: .medium,
-            description: "Better reasoning and coherence. More natural conversations. ~30 tokens/sec on iPad M3."
+            description: "Best balance of speed and quality. Reliable JSON output for structured responses. ~30 tokens/sec on iPad M3."
         ),
         ModelInfo(
             id: "phi-3-mini",
@@ -54,7 +45,7 @@ struct ModelInfo: Identifiable, Codable {
             sizeInMB: 2300,
             quality: 5,
             speed: .slow,
-            description: "Highest quality. Excellent reasoning, close to GPT-3.5 quality. ~15 tokens/sec on iPad M3."
+            description: "Highest quality. Excellent reasoning and most reliable JSON generation. ~15 tokens/sec on iPad M3."
         )
     ]
 

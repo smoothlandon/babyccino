@@ -15,7 +15,8 @@ class LLMServiceFactory {
         #else
         // Use real MLX LLM on physical device or Mac (Designed for iPad)
         // Both have Metal support
-        return MLXLLMService(config: .qwen05b)
+        // Default to Qwen 1.5B - best balance of speed and JSON reliability
+        return MLXLLMService(config: .qwen15b)
         #endif
     }
 }
